@@ -1,0 +1,13 @@
+target_sources(${LIB_NAME}
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/CubismOffscreenManager_SDL3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CubismOffscreenManager_SDL3.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CubismOffscreenRenderTarget_SDL3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CubismOffscreenRenderTarget_SDL3.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CubismClass_SDL3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CubismClass_SDL3.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CubismRenderTarget_SDL3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CubismRenderTarget_SDL3.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CubismRenderer_SDL3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CubismRenderer_SDL3.hpp
+)
