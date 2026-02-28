@@ -6,7 +6,6 @@
  */
 
 #pragma once
-#include <string>
 #include "../CubismRenderer.hpp"
 #include "../CubismClippingManager.hpp"
 #include <SDL3/SDL_gpu.h>

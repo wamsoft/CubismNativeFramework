@@ -11,7 +11,6 @@
 #include "Type/csmVector.hpp"
 #include "Model/CubismModel.hpp"
 #include "Rendering/csmBlendMode.hpp"
-#include <fstream>
 
 //------------ LIVE2D NAMESPACE ------------
 namespace Live2D { namespace Cubism { namespace Framework { namespace Rendering {
@@ -383,24 +382,33 @@ SDL_GPUShader* CubismPipeline_SDL3::PipelineResource::LoadShader(SDL_GPUDevice* 
                                                                   SDL_GPUShaderStage stage,
                                                                   csmUint32 numSamplers, csmUint32 numUniformBuffers)
 {
-    std::ifstream file(filename.GetRawString(), std::ios::ate | std::ios::binary);
+    csmLoadFileFunction fileLoader = CubismFramework::GetLoadFileFunction();
+    csmReleaseBytesFunction bytesReleaser = CubismFramework::GetReleaseBytesFunction();
 
-    if (!file.is_open())
+    if (!fileLoader)
+    {
+        CubismLogError("File loader is not set.");
+        return nullptr;
+    }
+
+    if (!bytesReleaser)
+    {
+        CubismLogError("Byte releaser is not set.");
+        return nullptr;
+    }
+
+    csmSizeInt fileSize;
+    csmByte* fileData = fileLoader(filename.GetRawString(), &fileSize);
+
+    if (!fileData)
     {
         CubismLogError("failed to open shader file: %s", filename.GetRawString());
         return nullptr;
     }
 
-    size_t fileSize = static_cast<size_t>(file.tellg());
-    csmVector<char> buffer(static_cast<csmInt32>(fileSize));
-
-    file.seekg(0);
-    file.read(buffer.GetPtr(), fileSize);
-    file.close();
-
     SDL_GPUShaderCreateInfo shaderInfo = {};
-    shaderInfo.code = reinterpret_cast<const Uint8*>(buffer.GetPtr());
-    shaderInfo.code_size = fileSize;
+    shaderInfo.code = reinterpret_cast<const Uint8*>(fileData);
+    shaderInfo.code_size = static_cast<size_t>(fileSize);
     shaderInfo.entrypoint = "main";
     shaderInfo.format = SDL_GPU_SHADERFORMAT_SPIRV;
     shaderInfo.stage = stage;
@@ -411,6 +419,10 @@ SDL_GPUShader* CubismPipeline_SDL3::PipelineResource::LoadShader(SDL_GPUDevice* 
     shaderInfo.props = 0;
 
     SDL_GPUShader* shader = SDL_CreateGPUShader(device, &shaderInfo);
+
+    // ファイル読み込みで確保したバイト列を解放
+    bytesReleaser(fileData);
+
     if (shader == nullptr)
     {
         CubismLogError("Failed to create shader: %s", SDL_GetError());
