@@ -611,13 +611,11 @@ public:
      * @brief   レンダリング開始
      *
      * @param[in]   commandBuffer       ->  コマンドバッファ
-     * @param[in]   colorTarget         ->  カラーターゲット情報
      * @param[in]   isResume            ->  レンダリング再開かのフラグ
      *
      * @return  レンダーパス
      */
-    SDL_GPURenderPass* BeginRendering(SDL_GPUCommandBuffer* commandBuffer,
-                                      SDL_GPUColorTargetInfo* colorTarget);
+    SDL_GPURenderPass* BeginRendering(SDL_GPUCommandBuffer* commandBuffer, csmBool isResume);
 
     /**
      * @brief   レンダリング終了

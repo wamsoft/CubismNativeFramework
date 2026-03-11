@@ -1388,10 +1388,27 @@ CubismRenderTarget_SDL3* CubismRenderer_SDL3::GetOffscreenMaskBuffer(csmUint32 b
     return nullptr;
 }
 
-SDL_GPURenderPass* CubismRenderer_SDL3::BeginRendering(SDL_GPUCommandBuffer* commandBuffer,
-                                                        SDL_GPUColorTargetInfo* colorTarget)
+SDL_GPURenderPass* CubismRenderer_SDL3::BeginRendering(SDL_GPUCommandBuffer* commandBuffer, csmBool isResume)
 {
-    SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(commandBuffer, colorTarget, 1, nullptr);
+    SDL_GPUColorTargetInfo colorTargetInfo = {};
+    colorTargetInfo.texture = s_renderTexture;
+    colorTargetInfo.clear_color = _clearColor;
+    colorTargetInfo.load_op = isResume ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
+    colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
+
+    SDL_GPUDepthStencilTargetInfo depthTargetInfo = {};
+    depthTargetInfo.texture = _depthImage.GetTexture();
+    depthTargetInfo.clear_depth = 1.0f;
+    // 深度は常にクリアする（Vulkanレンダラー準拠）。
+    depthTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR;
+    depthTargetInfo.store_op = SDL_GPU_STOREOP_DONT_CARE;
+    depthTargetInfo.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+    depthTargetInfo.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+    depthTargetInfo.cycle = false;
+    depthTargetInfo.clear_stencil = 0;
+
+    SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(commandBuffer, &colorTargetInfo, 1,
+                                                            _depthImage.IsValid() ? &depthTargetInfo : nullptr);
     if (renderPass == nullptr)
     {
         CubismLogError("Failed to begin render pass: %s", SDL_GetError());
@@ -1423,27 +1440,7 @@ SDL_GPURenderPass* CubismRenderer_SDL3::BeginRenderTarget(SDL_GPUCommandBuffer* 
     }
     else
     {
-        // 通常はメインターゲットに描画
-        SDL_GPUColorTargetInfo colorTargetInfo = {};
-        colorTargetInfo.texture = s_renderTexture;
-        colorTargetInfo.clear_color = _clearColor;
-        colorTargetInfo.load_op = isResume ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
-        colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
-
-        SDL_GPUDepthStencilTargetInfo depthTargetInfo = {};
-        depthTargetInfo.texture = _depthImage.GetTexture();
-        depthTargetInfo.clear_depth = 1.0f;
-        // 深度は常にクリアする（Vulkanレンダラー準拠）。
-        // カラーのみisResumeに応じてLOAD/CLEARを切り替える。
-        depthTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR;
-        depthTargetInfo.store_op = SDL_GPU_STOREOP_DONT_CARE;
-        depthTargetInfo.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
-        depthTargetInfo.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
-        depthTargetInfo.cycle = false;
-        depthTargetInfo.clear_stencil = 0;
-
-        return SDL_BeginGPURenderPass(commandBuffer, &colorTargetInfo, 1,
-                                      _depthImage.IsValid() ? &depthTargetInfo : nullptr);
+        return BeginRendering(commandBuffer, isResume);
     }
 }
 
@@ -1458,7 +1455,7 @@ void CubismRenderer_SDL3::EndRenderTarget(SDL_GPUCommandBuffer* commandBuffer, S
         }
         else
         {
-            SDL_EndGPURenderPass(renderPass);
+            EndRendering(renderPass);
         }
         // メインターゲットへコピーバック
         AfterDrawModelRenderTarget();
@@ -1471,7 +1468,7 @@ void CubismRenderer_SDL3::EndRenderTarget(SDL_GPUCommandBuffer* commandBuffer, S
     }
     else
     {
-        SDL_EndGPURenderPass(renderPass);
+        EndRendering(renderPass);
     }
 }
 
@@ -2198,28 +2195,8 @@ void CubismRenderer_SDL3::CopyRenderTarget(const CubismRenderTarget_SDL3* src, S
         return;
     }
 
-    // メインターゲットへのレンダーパスを開始してコピー
-    SDL_GPUColorTargetInfo colorTargetInfo = {};
-    colorTargetInfo.texture = s_renderTexture;
-    colorTargetInfo.load_op = SDL_GPU_LOADOP_LOAD;
-    colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
-
-    // Vulkanレンダラーに合わせて深度バッファは常にCLEARする。
-    // LOADだと前フレームの深度値が残り、コピークワッド(z=0.0)が
-    // 深度テスト(LESS_OR_EQUAL)に失敗してモデルが部分的にクリップされる。
-    SDL_GPUDepthStencilTargetInfo depthTargetInfo = {};
-    depthTargetInfo.texture = _depthImage.GetTexture();
-    depthTargetInfo.clear_depth = 1.0f;
-    depthTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR;
-    depthTargetInfo.store_op = SDL_GPU_STOREOP_DONT_CARE;
-    depthTargetInfo.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
-    depthTargetInfo.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
-    depthTargetInfo.cycle = false;
-    depthTargetInfo.clear_stencil = 0;
-
     _activeCommandBuffer = commandBuffer;
-    SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(commandBuffer, &colorTargetInfo, 1,
-                                                            _depthImage.IsValid() ? &depthTargetInfo : nullptr);
+    SDL_GPURenderPass* renderPass = BeginRendering(commandBuffer, true);
     if (renderPass == nullptr)
     {
         CubismLogError("CopyRenderTarget: Failed to begin render pass: %s", SDL_GetError());
@@ -2228,7 +2205,7 @@ void CubismRenderer_SDL3::CopyRenderTarget(const CubismRenderTarget_SDL3* src, S
 
     ExecuteDrawForRenderTarget(src, renderPass);
 
-    SDL_EndGPURenderPass(renderPass);
+    EndRendering(renderPass);
 }
 
 void CubismRenderer_SDL3::DrawObjectLoop(SDL_GPUCommandBuffer* commandBuffer)
@@ -2462,23 +2439,7 @@ void CubismRenderer_SDL3::DrawDrawable(csmInt32 drawableIndex, SDL_GPUCommandBuf
             else
             {
                 // 通常時: スワップチェーンに復帰
-                SDL_GPUColorTargetInfo colorTargetInfo = {};
-                colorTargetInfo.texture = s_renderTexture;
-                colorTargetInfo.load_op = SDL_GPU_LOADOP_LOAD;
-                colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
-
-                SDL_GPUDepthStencilTargetInfo depthTargetInfo = {};
-                depthTargetInfo.texture = _depthImage.GetTexture();
-                depthTargetInfo.clear_depth = 1.0f;
-                depthTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR;
-                depthTargetInfo.store_op = SDL_GPU_STOREOP_DONT_CARE;
-                depthTargetInfo.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
-                depthTargetInfo.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
-                depthTargetInfo.cycle = false;
-                depthTargetInfo.clear_stencil = 0;
-
-                renderPass = SDL_BeginGPURenderPass(commandBuffer, &colorTargetInfo, 1,
-                                                    _depthImage.IsValid() ? &depthTargetInfo : nullptr);
+                renderPass = BeginRendering(commandBuffer, true);
             }
 
             // ビューポートを戻す
@@ -2528,23 +2489,7 @@ void CubismRenderer_SDL3::DrawDrawable(csmInt32 drawableIndex, SDL_GPUCommandBuf
         }
         else
         {
-            SDL_GPUColorTargetInfo colorTargetInfo = {};
-            colorTargetInfo.texture = s_renderTexture;
-            colorTargetInfo.load_op = SDL_GPU_LOADOP_LOAD;
-            colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
-
-            SDL_GPUDepthStencilTargetInfo depthTargetInfo = {};
-            depthTargetInfo.texture = _depthImage.GetTexture();
-            depthTargetInfo.clear_depth = 1.0f;
-            depthTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR;
-            depthTargetInfo.store_op = SDL_GPU_STOREOP_DONT_CARE;
-            depthTargetInfo.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
-            depthTargetInfo.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
-            depthTargetInfo.cycle = false;
-            depthTargetInfo.clear_stencil = 0;
-
-            renderPass = SDL_BeginGPURenderPass(commandBuffer, &colorTargetInfo, 1,
-                                                _depthImage.IsValid() ? &depthTargetInfo : nullptr);
+            renderPass = BeginRendering(commandBuffer, true);
         }
 
         // ビューポートを戻す
@@ -2826,24 +2771,7 @@ void CubismRenderer_SDL3::DrawOffscreen(CubismOffscreenRenderTarget_SDL3* curren
             // 通常時: スワップチェーンに復帰
             _currentRenderTarget = nullptr;
 
-            SDL_GPUColorTargetInfo colorTargetInfo = {};
-            colorTargetInfo.texture = s_renderTexture;
-            colorTargetInfo.load_op = SDL_GPU_LOADOP_LOAD;
-            colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
-
-            // Vulkanレンダラーに合わせて深度は常にクリアする
-            SDL_GPUDepthStencilTargetInfo depthTargetInfo = {};
-            depthTargetInfo.texture = _depthImage.GetTexture();
-            depthTargetInfo.clear_depth = 1.0f;
-            depthTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR;
-            depthTargetInfo.store_op = SDL_GPU_STOREOP_DONT_CARE;
-            depthTargetInfo.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
-            depthTargetInfo.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
-            depthTargetInfo.cycle = false;
-            depthTargetInfo.clear_stencil = 0;
-
-            renderPass = SDL_BeginGPURenderPass(commandBuffer, &colorTargetInfo, 1,
-                                                _depthImage.IsValid() ? &depthTargetInfo : nullptr);
+            renderPass = BeginRendering(commandBuffer, true);
 
             SDL_GPUViewport viewport = GetViewport(
                 static_cast<csmFloat32>(s_renderWidth),
