@@ -29,6 +29,12 @@ SDL_GPUTextureFormat s_depthFormat = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
 // 外部から渡されるコマンドバッファ（メインレンダーループとの共有用）
 SDL_GPUCommandBuffer* s_externalCommandBuffer = nullptr;
 
+// シェーダーフォーマット情報（バックエンド検出結果）
+SDL_GPUShaderFormat s_shaderFormat = SDL_GPU_SHADERFORMAT_SPIRV;
+csmString s_shaderSubDir = "spv/";
+csmString s_shaderExtension = ".spv";
+csmString s_shaderEntryPoint = "main";
+
 const ModelVertex modelRenderTargetVertexArray[] = {
     {{-1.0f, -1.0f}, {0.0f, 0.0f}},
     {{ 1.0f, -1.0f}, {1.0f, 0.0f}},
@@ -409,8 +415,8 @@ SDL_GPUShader* CubismPipeline_SDL3::PipelineResource::LoadShader(SDL_GPUDevice* 
     SDL_GPUShaderCreateInfo shaderInfo = {};
     shaderInfo.code = reinterpret_cast<const Uint8*>(fileData);
     shaderInfo.code_size = static_cast<size_t>(fileSize);
-    shaderInfo.entrypoint = "main";
-    shaderInfo.format = SDL_GPU_SHADERFORMAT_SPIRV;
+    shaderInfo.entrypoint = s_shaderEntryPoint.GetRawString();
+    shaderInfo.format = s_shaderFormat;
     shaderInfo.stage = stage;
     shaderInfo.num_samplers = numSamplers;
     shaderInfo.num_uniform_buffers = numUniformBuffers;
@@ -653,6 +659,10 @@ void CubismPipeline_SDL3::CreatePipelines(SDL_GPUDevice* device, SDL_GPUTextureF
         return;
     }
 
+    // バックエンドに応じたシェーダーパスヘルパー
+    csmString shaderDir = csmString("FrameworkShaders/") + s_shaderSubDir;
+    csmString ext = s_shaderExtension;
+
     _pipelineResource.Resize(ShaderCount);
     for (csmInt32 i = 0; i < ShaderCount; i++)
     {
@@ -668,16 +678,16 @@ void CubismPipeline_SDL3::CreatePipelines(SDL_GPUDevice* device, SDL_GPUTextureF
         }
     }
 
-    CreatePipelineResource(device, ShaderNames_Copy, "FrameworkShaders/VertShaderSrcCopy.spv", "FrameworkShaders/FragShaderSrcCopy.spv", colorTargetFormat);
-    CreatePipelineResource(device, ShaderNames_SetupMask, "FrameworkShaders/VertShaderSrcSetupMask.spv", "FrameworkShaders/FragShaderSrcSetupMask.spv", colorTargetFormat);
+    CreatePipelineResource(device, ShaderNames_Copy, shaderDir + "VertShaderSrcCopy" + ext, shaderDir + "FragShaderSrcCopy" + ext, colorTargetFormat);
+    CreatePipelineResource(device, ShaderNames_SetupMask, shaderDir + "VertShaderSrcSetupMask" + ext, shaderDir + "FragShaderSrcSetupMask" + ext, colorTargetFormat);
 
     // 通常
-    CreatePipelineResource(device, ShaderNames_Normal, "FrameworkShaders/VertShaderSrc.spv", "FrameworkShaders/FragShaderSrc.spv", colorTargetFormat);
-    CreatePipelineResource(device, ShaderNames_NormalMasked, "FrameworkShaders/VertShaderSrcMasked.spv", "FrameworkShaders/FragShaderSrcMask.spv", colorTargetFormat);
-    CreatePipelineResource(device, ShaderNames_NormalMaskedInverted, "FrameworkShaders/VertShaderSrcMasked.spv", "FrameworkShaders/FragShaderSrcMaskInverted.spv", colorTargetFormat);
-    CreatePipelineResource(device, ShaderNames_NormalPremultipliedAlpha, "FrameworkShaders/VertShaderSrc.spv", "FrameworkShaders/FragShaderSrcPremultipliedAlpha.spv", colorTargetFormat);
-    CreatePipelineResource(device, ShaderNames_NormalMaskedPremultipliedAlpha, "FrameworkShaders/VertShaderSrcMasked.spv", "FrameworkShaders/FragShaderSrcMaskPremultipliedAlpha.spv", colorTargetFormat);
-    CreatePipelineResource(device, ShaderNames_NormalMaskedInvertedPremultipliedAlpha, "FrameworkShaders/VertShaderSrcMasked.spv", "FrameworkShaders/FragShaderSrcMaskInvertedPremultipliedAlpha.spv", colorTargetFormat);
+    CreatePipelineResource(device, ShaderNames_Normal, shaderDir + "VertShaderSrc" + ext, shaderDir + "FragShaderSrc" + ext, colorTargetFormat);
+    CreatePipelineResource(device, ShaderNames_NormalMasked, shaderDir + "VertShaderSrcMasked" + ext, shaderDir + "FragShaderSrcMask" + ext, colorTargetFormat);
+    CreatePipelineResource(device, ShaderNames_NormalMaskedInverted, shaderDir + "VertShaderSrcMasked" + ext, shaderDir + "FragShaderSrcMaskInverted" + ext, colorTargetFormat);
+    CreatePipelineResource(device, ShaderNames_NormalPremultipliedAlpha, shaderDir + "VertShaderSrc" + ext, shaderDir + "FragShaderSrcPremultipliedAlpha" + ext, colorTargetFormat);
+    CreatePipelineResource(device, ShaderNames_NormalMaskedPremultipliedAlpha, shaderDir + "VertShaderSrcMasked" + ext, shaderDir + "FragShaderSrcMaskPremultipliedAlpha" + ext, colorTargetFormat);
+    CreatePipelineResource(device, ShaderNames_NormalMaskedInvertedPremultipliedAlpha, shaderDir + "VertShaderSrcMasked" + ext, shaderDir + "FragShaderSrcMaskInvertedPremultipliedAlpha" + ext, colorTargetFormat);
 
     // 加算（通常と同じリソースを共有）
     _pipelineResource[ShaderNames_Add] = _pipelineResource[ShaderNames_Normal];
@@ -707,36 +717,34 @@ void CubismPipeline_SDL3::CreatePipelines(SDL_GPUDevice* device, SDL_GPUTextureF
 
             // Normal Overはシェーダを作る必要がないため 1 から始める
             const csmInt32 start = (i == 0 ? 1 : 0);
-            csmString shaderDirectory = "FrameworkShaders/";
-            csmString fragShaderExt = ".spv";
             for (csmInt32 j = start; j <= Core::csmAlphaBlendType_DisjointOver; ++j)
             {
                 csmString colorBlendModeName = csmBlendMode::ColorBlendModeToString(i);
                 csmString alphaBlendModeName = csmBlendMode::AlphaBlendModeToString(j);
 
                 csmString baseFragShaderFileName = "FragShaderSrcBlend";
-                csmString fragShaderFileName = shaderDirectory + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + fragShaderExt;
-                CreatePipelineResource(device, offset++, "FrameworkShaders/VertShaderSrcBlend.spv", fragShaderFileName, colorTargetFormat, i, j);
+                csmString fragShaderFileName = shaderDir + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + ext;
+                CreatePipelineResource(device, offset++, shaderDir + "VertShaderSrcBlend" + ext, fragShaderFileName, colorTargetFormat, i, j);
 
                 baseFragShaderFileName = "FragShaderSrcMaskBlend";
-                fragShaderFileName = shaderDirectory + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + fragShaderExt;
-                CreatePipelineResource(device, offset++, "FrameworkShaders/VertShaderSrcMaskedBlend.spv", fragShaderFileName, colorTargetFormat, i, j);
+                fragShaderFileName = shaderDir + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + ext;
+                CreatePipelineResource(device, offset++, shaderDir + "VertShaderSrcMaskedBlend" + ext, fragShaderFileName, colorTargetFormat, i, j);
 
                 baseFragShaderFileName = "FragShaderSrcMaskInvertedBlend";
-                fragShaderFileName = shaderDirectory + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + fragShaderExt;
-                CreatePipelineResource(device, offset++, "FrameworkShaders/VertShaderSrcMaskedBlend.spv", fragShaderFileName, colorTargetFormat, i, j);
+                fragShaderFileName = shaderDir + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + ext;
+                CreatePipelineResource(device, offset++, shaderDir + "VertShaderSrcMaskedBlend" + ext, fragShaderFileName, colorTargetFormat, i, j);
 
                 baseFragShaderFileName = "FragShaderSrcPremultipliedAlphaBlend";
-                fragShaderFileName = shaderDirectory + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + fragShaderExt;
-                CreatePipelineResource(device, offset++, "FrameworkShaders/VertShaderSrcBlend.spv", fragShaderFileName, colorTargetFormat, i, j);
+                fragShaderFileName = shaderDir + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + ext;
+                CreatePipelineResource(device, offset++, shaderDir + "VertShaderSrcBlend" + ext, fragShaderFileName, colorTargetFormat, i, j);
 
                 baseFragShaderFileName = "FragShaderSrcMaskPremultipliedAlphaBlend";
-                fragShaderFileName = shaderDirectory + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + fragShaderExt;
-                CreatePipelineResource(device, offset++, "FrameworkShaders/VertShaderSrcMaskedBlend.spv", fragShaderFileName, colorTargetFormat, i, j);
+                fragShaderFileName = shaderDir + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + ext;
+                CreatePipelineResource(device, offset++, shaderDir + "VertShaderSrcMaskedBlend" + ext, fragShaderFileName, colorTargetFormat, i, j);
 
                 baseFragShaderFileName = "FragShaderSrcMaskInvertedPremultipliedAlphaBlend";
-                fragShaderFileName = shaderDirectory + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + fragShaderExt;
-                CreatePipelineResource(device, offset++, "FrameworkShaders/VertShaderSrcMaskedBlend.spv", fragShaderFileName, colorTargetFormat, i, j);
+                fragShaderFileName = shaderDir + baseFragShaderFileName + colorBlendModeName + alphaBlendModeName + ext;
+                CreatePipelineResource(device, offset++, shaderDir + "VertShaderSrcMaskedBlend" + ext, fragShaderFileName, colorTargetFormat, i, j);
             }
         }
     }
@@ -907,6 +915,33 @@ void CubismRenderer_SDL3::InitializeConstantSettings(SDL_GPUDevice* device, csmU
     s_renderHeight = height;
     s_colorFormat = colorTargetFormat;
     s_depthFormat = depthTargetFormat;
+
+    // デバイスがサポートするシェーダーフォーマットを検出してロード情報を設定
+    SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(device);
+    if (formats & SDL_GPU_SHADERFORMAT_SPIRV)
+    {
+        s_shaderFormat = SDL_GPU_SHADERFORMAT_SPIRV;
+        s_shaderSubDir = "spv/";
+        s_shaderExtension = ".spv";
+        s_shaderEntryPoint = "main";
+    }
+    else if (formats & SDL_GPU_SHADERFORMAT_DXIL)
+    {
+        s_shaderFormat = SDL_GPU_SHADERFORMAT_DXIL;
+        s_shaderSubDir = "dxil/";
+        s_shaderExtension = ".dxil";
+        s_shaderEntryPoint = "main";
+    }
+    else if (formats & SDL_GPU_SHADERFORMAT_MSL)
+    {
+        s_shaderFormat = SDL_GPU_SHADERFORMAT_MSL;
+        s_shaderSubDir = "msl/";
+        s_shaderExtension = ".msl";
+        s_shaderEntryPoint = "main0";
+    }
+    CubismLogInfo("Shader format: subdir=%s ext=%s entrypoint=%s",
+                  s_shaderSubDir.GetRawString(), s_shaderExtension.GetRawString(),
+                  s_shaderEntryPoint.GetRawString());
 }
 
 void CubismRenderer_SDL3::SetRenderTarget(SDL_GPUTexture* texture, SDL_GPUTextureFormat format,

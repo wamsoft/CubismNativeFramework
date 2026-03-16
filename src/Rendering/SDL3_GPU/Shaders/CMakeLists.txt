@@ -1,32 +1,44 @@
 set(normal_shader_files
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/common.glsl
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrc.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcCopy.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMask.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskInverted.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskInvertedPremultipliedAlpha.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskPremultipliedAlpha.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcPremultipliedAlpha.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcSetupMask.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrc.vert
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrcCopy.vert
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrcMasked.vert
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrcSetupMask.vert
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrcBlend.vert
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrcMaskedBlend.vert
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrc.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcCopy.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMask.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskInverted.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskInvertedPremultipliedAlpha.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskPremultipliedAlpha.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcPremultipliedAlpha.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcSetupMask.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrc.vert.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrcCopy.vert.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrcMasked.vert.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrcSetupMask.vert.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrcBlend.vert.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/VertShaderSrcMaskedBlend.vert.hlsl
 )
 
-set(blend_shader_files
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcColorBlend.glsl
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcAlphaBlend.glsl
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcBlend.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskBlend.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskInvertedBlend.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskInvertedPremultipliedAlphaBlend.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskPremultipliedAlphaBlend.frag
-   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcPremultipliedAlphaBlend.frag
+set(blend_fragment_shader_files
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcBlend.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskBlend.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskInvertedBlend.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskInvertedPremultipliedAlphaBlend.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcMaskPremultipliedAlphaBlend.frag.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcPremultipliedAlphaBlend.frag.hlsl
 )
-set (shader_files "${normal_shader_files};${blend_shader_files}")
+
+set(blend_helper_files
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcColorBlend.hlsl
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/FragShaderSrcAlphaBlend.hlsl
+)
+
+set(shared_shader_files
+   ${CMAKE_CURRENT_SOURCE_DIR}/src/common.hlsl
+)
+
+set(shader_files
+   ${normal_shader_files}
+   ${blend_fragment_shader_files}
+   ${blend_helper_files}
+   ${shared_shader_files}
+)
 
 set(color_blend_modes
     Normal
@@ -78,84 +90,107 @@ set(Alpha_Blend_Mode_Out 2)
 set(Alpha_Blend_Mode_ConjointOver 3)
 set(Alpha_Blend_Mode_DisjointOver 4)
 
-# Shader compilation
+if(NOT DEFINED SHADERCROSS_COMMAND)
+  if(DEFINED ENV{SDL_SHADERCROSS_PATH})
+    set(SHADERCROSS_COMMAND "$ENV{SDL_SHADERCROSS_PATH}/shadercross")
+  else()
+    message(FATAL_ERROR "SDL_SHADERCROSS_PATH environment variable is not set and SHADERCROSS_COMMAND is not defined.")
+  endif()
+endif()
+
+set(output_base_dir ${CMAKE_CURRENT_BINARY_DIR}/compiledShaders)
+set(spv_dir ${output_base_dir}/spv)
+set(dxil_dir ${output_base_dir}/dxil)
+set(msl_dir ${output_base_dir}/msl)
+set(shader_include_dir ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 foreach(shader ${normal_shader_files})
   get_filename_component(file_name ${shader} NAME)
-  if(file_name MATCHES "common.glsl")
-    continue()
-  endif()
   get_filename_component(full_path ${shader} ABSOLUTE)
-  set(output_dir ${CMAKE_CURRENT_BINARY_DIR}/compiledShaders)
-  string(REGEX REPLACE \\.frag|\\.vert "" output_file ${file_name})
-  set(output_file ${output_dir}/${output_file}.spv)
-  set(compiled_shaders_framework ${compiled_shaders_framework} ${output_file})
-  set(compiled_shaders_framework ${compiled_shaders_framework} PARENT_SCOPE)
+  string(REGEX REPLACE "\\.vert\\.hlsl$|\\.frag\\.hlsl$" "" base_name ${file_name})
   set_source_files_properties(${shader} PROPERTIES HEADER_FILE_ONLY TRUE)
 
-  # Add -DVERTEX_SHADER for .vert files so common.glsl uses correct descriptor set layout
-  set(STAGE_DEFINE "")
-  if(file_name MATCHES "\\.vert$")
-    set(STAGE_DEFINE "-DVERTEX_SHADER")
+  if(file_name MATCHES "\\.vert\\.hlsl$")
+    set(SHADER_STAGE "vertex")
+  else()
+    set(SHADER_STAGE "fragment")
   endif()
 
-  if(WIN32)
-    add_custom_command(
-            OUTPUT ${output_file}
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${output_dir}
-            COMMAND $ENV{VK_SDK_PATH}/Bin/glslc.exe ${STAGE_DEFINE} ${full_path} -o ${output_file}
-            DEPENDS ${full_path}
-        )
-  endif()
-  if(UNIX AND NOT APPLE)
-    add_custom_command(
-            OUTPUT ${output_file}
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${output_dir}
-            COMMAND glslc ${STAGE_DEFINE} ${full_path} -o ${output_file}
-            DEPENDS ${full_path}
-        )
-  endif()
+  set(spv_file ${spv_dir}/${base_name}.spv)
+  set(dxil_file ${dxil_dir}/${base_name}.dxil)
+  set(msl_file ${msl_dir}/${base_name}.msl)
+
+  add_custom_command(
+    OUTPUT ${spv_file}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${spv_dir}
+    COMMAND ${SHADERCROSS_COMMAND} ${full_path} -s HLSL -d SPIRV -t ${SHADER_STAGE} -e main -I ${shader_include_dir} -o ${spv_file}
+    DEPENDS ${full_path} ${shared_shader_files} ${SHADERCROSS_TARGET_DEPENDS}
+  )
+
+  add_custom_command(
+    OUTPUT ${dxil_file}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${dxil_dir}
+    COMMAND ${SHADERCROSS_COMMAND} ${full_path} -s HLSL -d DXIL -t ${SHADER_STAGE} -e main -I ${shader_include_dir} -o ${dxil_file}
+    DEPENDS ${full_path} ${shared_shader_files} ${SHADERCROSS_TARGET_DEPENDS}
+  )
+
+  add_custom_command(
+    OUTPUT ${msl_file}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${msl_dir}
+    COMMAND ${SHADERCROSS_COMMAND} ${full_path} -s HLSL -d MSL -t ${SHADER_STAGE} -e main -I ${shader_include_dir} -o ${msl_file}
+    DEPENDS ${full_path} ${shared_shader_files} ${SHADERCROSS_TARGET_DEPENDS}
+  )
+
+  list(APPEND compiled_shaders_framework ${spv_file} ${dxil_file} ${msl_file})
+  set(compiled_shaders_framework ${compiled_shaders_framework} PARENT_SCOPE)
 endforeach()
 
-foreach(shader ${blend_shader_files})
+foreach(shader ${blend_fragment_shader_files})
   get_filename_component(file_name ${shader} NAME)
-  if(file_name MATCHES "\.glsl")
-    continue()
-  endif()
   get_filename_component(full_path ${shader} ABSOLUTE)
-  set(output_dir ${CMAKE_CURRENT_BINARY_DIR}/compiledShaders)
-  get_filename_component(output_file ${shader} NAME_WE)
+  set_source_files_properties(${shader} PROPERTIES HEADER_FILE_ONLY TRUE)
+
   foreach(color_blend_mode ${color_blend_modes})
     foreach(alpha_blend_mode ${alpha_blend_modes})
       if((color_blend_mode MATCHES "^Normal$") AND (alpha_blend_mode MATCHES "^Over$"))
         continue()
       endif()
-      get_filename_component(output_file ${shader} NAME_WE)
-      set(output_file ${output_dir}/${output_file}${color_blend_mode}${alpha_blend_mode}.spv)
-      set(compiled_shaders_framework ${compiled_shaders_framework} ${output_file})
-      set(compiled_shaders_framework ${compiled_shaders_framework} PARENT_SCOPE)
-      set_source_files_properties(${shader} PROPERTIES HEADER_FILE_ONLY TRUE)
+
+      string(REGEX REPLACE "\\.frag\\.hlsl$" "" base_name ${file_name})
+      set(output_name ${base_name}${color_blend_mode}${alpha_blend_mode})
       set(define_color_blend_mode "CSM_COLOR_BLEND_MODE=${Color_Blend_Mode_${color_blend_mode}}")
       set(define_alpha_blend_mode "CSM_ALPHA_BLEND_MODE=${Alpha_Blend_Mode_${alpha_blend_mode}}")
-      if(WIN32)
-        add_custom_command(
-                OUTPUT ${output_file}
-                COMMAND ${CMAKE_COMMAND} -E make_directory ${output_dir}
-                COMMAND $ENV{VK_SDK_PATH}/Bin/glslc.exe -D${define_color_blend_mode} -D${define_alpha_blend_mode} -o ${output_file} ${full_path}
-                DEPENDS ${full_path}
-            )
-      endif()
-      if(UNIX AND NOT APPLE)
-        add_custom_command(
-                OUTPUT ${output_file}
-                COMMAND ${CMAKE_COMMAND} -E make_directory ${output_dir}
-                COMMAND glslc -D${define_color_blend_mode} -D${define_alpha_blend_mode} -o ${output_file} ${full_path}
-                DEPENDS ${full_path}
-            )
-      endif()
+
+      set(spv_file ${spv_dir}/${output_name}.spv)
+      set(dxil_file ${dxil_dir}/${output_name}.dxil)
+      set(msl_file ${msl_dir}/${output_name}.msl)
+
+      add_custom_command(
+        OUTPUT ${spv_file}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${spv_dir}
+        COMMAND ${SHADERCROSS_COMMAND} ${full_path} -s HLSL -d SPIRV -t fragment -e main -I ${shader_include_dir} -D${define_color_blend_mode} -D${define_alpha_blend_mode} -o ${spv_file}
+        DEPENDS ${full_path} ${shared_shader_files} ${blend_helper_files} ${SHADERCROSS_TARGET_DEPENDS}
+      )
+
+      add_custom_command(
+        OUTPUT ${dxil_file}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${dxil_dir}
+        COMMAND ${SHADERCROSS_COMMAND} ${full_path} -s HLSL -d DXIL -t fragment -e main -I ${shader_include_dir} -D${define_color_blend_mode} -D${define_alpha_blend_mode} -o ${dxil_file}
+        DEPENDS ${full_path} ${shared_shader_files} ${blend_helper_files} ${SHADERCROSS_TARGET_DEPENDS}
+      )
+
+      add_custom_command(
+        OUTPUT ${msl_file}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${msl_dir}
+        COMMAND ${SHADERCROSS_COMMAND} ${full_path} -s HLSL -d MSL -t fragment -e main -I ${shader_include_dir} -D${define_color_blend_mode} -D${define_alpha_blend_mode} -o ${msl_file}
+        DEPENDS ${full_path} ${shared_shader_files} ${blend_helper_files} ${SHADERCROSS_TARGET_DEPENDS}
+      )
+
+      list(APPEND compiled_shaders_framework ${spv_file} ${dxil_file} ${msl_file})
+      set(compiled_shaders_framework ${compiled_shaders_framework} PARENT_SCOPE)
     endforeach()
   endforeach()
 endforeach()
-
 
 source_group("shaders" FILES ${shader_files})
 add_custom_target(
