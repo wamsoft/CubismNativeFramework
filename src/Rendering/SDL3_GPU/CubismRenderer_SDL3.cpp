@@ -12,6 +12,10 @@
 #include "Model/CubismModel.hpp"
 #include "Rendering/csmBlendMode.hpp"
 
+// ビルド時定義をランタイム文字列に変換するためのヘルパー
+#define CSM_STRINGIFY_IMPL(x) #x
+#define CSM_STRINGIFY(x) CSM_STRINGIFY_IMPL(x)
+
 //------------ LIVE2D NAMESPACE ------------
 namespace Live2D { namespace Cubism { namespace Framework { namespace Rendering {
 // 各種静的変数
@@ -938,6 +942,23 @@ void CubismRenderer_SDL3::InitializeConstantSettings(SDL_GPUDevice* device, csmU
         s_shaderSubDir = "msl/";
         s_shaderExtension = ".msl";
         s_shaderEntryPoint = "main0";
+    }
+    else if (formats & SDL_GPU_SHADERFORMAT_PRIVATE)
+    {
+        s_shaderFormat = SDL_GPU_SHADERFORMAT_PRIVATE;
+        // PRIVATEシェーダーはシェーダー置き場ルートに直接配置する想定
+        // (PRIVATE(NDA環境)では複数種シェーダーを同一パックすることは無いはず)
+        s_shaderSubDir = "";
+#if defined(CSM_SDL3_GPU_PRIVATE_SHADER_EXTENSION)
+        s_shaderExtension = CSM_STRINGIFY(CSM_SDL3_GPU_PRIVATE_SHADER_EXTENSION);
+#else
+        s_shaderExtension = ".bin";
+#endif
+#if defined(CSM_SDL3_GPU_PRIVATE_SHADER_ENTRYPOINT)
+        s_shaderEntryPoint = CSM_STRINGIFY(CSM_SDL3_GPU_PRIVATE_SHADER_ENTRYPOINT);
+#else
+        s_shaderEntryPoint = "main";
+#endif
     }
     CubismLogInfo("Shader format: subdir=%s ext=%s entrypoint=%s",
                   s_shaderSubDir.GetRawString(), s_shaderExtension.GetRawString(),
