@@ -141,8 +141,9 @@ foreach(shader ${normal_shader_files})
     DEPENDS ${full_path} ${shared_shader_files} ${SHADERCROSS_TARGET_DEPENDS}
   )
 
-  list(APPEND compiled_shaders_framework ${spv_file} ${dxil_file} ${msl_file})
-  set(compiled_shaders_framework ${compiled_shaders_framework} PARENT_SCOPE)
+  list(APPEND compiled_shaders_framework_spv ${spv_file})
+  list(APPEND compiled_shaders_framework_dxil ${dxil_file})
+  list(APPEND compiled_shaders_framework_msl ${msl_file})
 endforeach()
 
 foreach(shader ${blend_fragment_shader_files})
@@ -186,15 +187,33 @@ foreach(shader ${blend_fragment_shader_files})
         DEPENDS ${full_path} ${shared_shader_files} ${blend_helper_files} ${SHADERCROSS_TARGET_DEPENDS}
       )
 
-      list(APPEND compiled_shaders_framework ${spv_file} ${dxil_file} ${msl_file})
-      set(compiled_shaders_framework ${compiled_shaders_framework} PARENT_SCOPE)
+      list(APPEND compiled_shaders_framework_spv ${spv_file})
+      list(APPEND compiled_shaders_framework_dxil ${dxil_file})
+      list(APPEND compiled_shaders_framework_msl ${msl_file})
     endforeach()
   endforeach()
 endforeach()
 
 source_group("shaders" FILES ${shader_files})
-add_custom_target(
-    FrameworkShaders ALL
-    DEPENDS ${compiled_shaders_framework}
+
+# フォーマット別のカスタムターゲット
+# 利用者側で必要なフォーマットだけ add_dependencies() で選択する
+add_custom_target(FrameworkShaders_SPIRV
+    DEPENDS ${compiled_shaders_framework_spv}
     SOURCES ${shader_files}
+)
+
+add_custom_target(FrameworkShaders_DXIL
+    DEPENDS ${compiled_shaders_framework_dxil}
+    SOURCES ${shader_files}
+)
+
+add_custom_target(FrameworkShaders_MSL
+    DEPENDS ${compiled_shaders_framework_msl}
+    SOURCES ${shader_files}
+)
+
+# 全フォーマットをまとめてビルドするための便利ターゲット
+add_custom_target(FrameworkShaders
+    DEPENDS FrameworkShaders_SPIRV FrameworkShaders_DXIL FrameworkShaders_MSL
 )
